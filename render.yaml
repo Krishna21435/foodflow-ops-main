@@ -1,0 +1,115 @@
+databases:
+  - name: foodflow-db
+    plan: free
+
+services:
+  # 1. Microservices
+  - type: web
+    name: auth-service
+    runtime: docker
+    rootDir: services/auth-service
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: foodflow-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+
+  - type: web
+    name: order-service
+    runtime: docker
+    rootDir: services/order-service
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: foodflow-db
+          property: connectionString
+      - key: RABBITMQ_URL
+        sync: false # You will provide this from CloudAMQP
+
+  - type: web
+    name: restaurant-service
+    runtime: docker
+    rootDir: services/restaurant-service
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: foodflow-db
+          property: connectionString
+      - key: RABBITMQ_URL
+        sync: false
+
+  - type: web
+    name: delivery-service
+    runtime: docker
+    rootDir: services/delivery-service
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: foodflow-db
+          property: connectionString
+      - key: RABBITMQ_URL
+        sync: false
+
+  - type: web
+    name: ops-service
+    runtime: docker
+    rootDir: services/ops-tracker-service
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: foodflow-db
+          property: connectionString
+      - key: RABBITMQ_URL
+        sync: false
+
+  # 2. API Gateway
+  - type: web
+    name: gateway
+    runtime: docker
+    rootDir: api-gateway
+    plan: free
+    envVars:
+      - key: AUTH_SERVICE_URL
+        fromService:
+          type: web
+          name: auth-service
+          property: host
+      - key: ORDER_SERVICE_URL
+        fromService:
+          type: web
+          name: order-service
+          property: host
+      - key: RESTAURANT_SERVICE_URL
+        fromService:
+          type: web
+          name: restaurant-service
+          property: host
+      - key: DELIVERY_SERVICE_URL
+        fromService:
+          type: web
+          name: delivery-service
+          property: host
+      - key: OPS_SERVICE_URL
+        fromService:
+          type: web
+          name: ops-service
+          property: host
+
+  # 3. Frontend
+  - type: web
+    name: frontend
+    runtime: docker
+    rootDir: frontend
+    plan: free
+    envVars:
+      - key: VITE_GATEWAY_URL
+        sync: false # You will paste the public Gateway URL here
+      - key: VITE_SOCKET_URL
+        sync: false # You will paste the public Ops Service URL here
