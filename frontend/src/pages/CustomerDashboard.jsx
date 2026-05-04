@@ -19,6 +19,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const API_URL = import.meta.env.VITE_GATEWAY_URL || 'http://localhost:8000';
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3005';
+const DEMO_ORDERS_STORAGE_KEY = 'foodflow-demo-orders';
+
+const normalizeOrderItems = (items) => {
+  if (Array.isArray(items)) return items;
+  if (typeof items === 'string') {
+    try {
+      return JSON.parse(items);
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
 
 const CustomerDashboard = () => {
   const { user, logout } = useAuth();
@@ -33,6 +46,7 @@ const CustomerDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [radius, setRadius] = useState(5);
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderTimeline, setOrderTimeline] = useState([]);
@@ -121,9 +135,20 @@ const CustomerDashboard = () => {
       setOrders(res.data);
     } catch (err) {
       console.warn('Backend unreachable, using demo orders');
+      const storedOrders = localStorage.getItem(DEMO_ORDERS_STORAGE_KEY);
+      if (storedOrders) {
+        try {
+          const parsedOrders = JSON.parse(storedOrders);
+          setOrders(parsedOrders.filter(order => order.customer_id === user.id));
+          return;
+        } catch {
+          localStorage.removeItem(DEMO_ORDERS_STORAGE_KEY);
+        }
+      }
+
       setOrders([
-        { id: 1001, status: 'DELIVERED', total_amount: 549, created_at: new Date().toISOString() },
-        { id: 1002, status: 'OUT_FOR_DELIVERY', total_amount: 890, created_at: new Date().toISOString() }
+        { id: 1001, customer_id: user.id, status: 'DELIVERED', total_amount: 549, created_at: new Date().toISOString(), items: JSON.stringify([{ name: 'Signature Truffle Burger', price: 549 }]), delivery_address: 'Sector 4, HSR Layout' },
+        { id: 1002, customer_id: user.id, status: 'OUT_FOR_DELIVERY', total_amount: 890, created_at: new Date().toISOString(), items: JSON.stringify([{ name: 'Samurai Sushi Set', price: 890 }]), delivery_address: 'Indiranagar 100ft Rd' }
       ]);
     }
   };
@@ -172,29 +197,63 @@ const CustomerDashboard = () => {
   };
 
   const placeOrder = async () => {
+    if (!selectedRestaurant) {
+      alert('Please select a restaurant first.');
+      return;
+    }
+
+    if (cart.length === 0) {
+      alert('Your cart is empty.');
+      return;
+    }
+
     if (!deliveryAddress.trim()) {
       alert('Please enter a delivery address');
       return;
     }
     
     const total_amount = cart.reduce((sum, item) => sum + parseFloat(item.price), 0);
+    const payload = {
+      customer_id: user.id,
+      restaurant_id: selectedRestaurant.id,
+      items: cart.map(({ id, ...item }) => item),
+      total_amount,
+      delivery_address: deliveryAddress.trim()
+    };
+
+    setIsPlacingOrder(true);
+
     try {
-      await axios.post(`${API_URL}/api/orders`, {
-        customer_id: user.id,
-        restaurant_id: selectedRestaurant.id,
-        items: cart,
-        total_amount,
-        delivery_address: deliveryAddress
-      });
+      await axios.post(`${API_URL}/api/orders`, payload);
       setCart([]);
       setDeliveryAddress('');
       setShowCart(false);
+      setSelectedOrder(null);
       setView('orders');
-      fetchOrders();
+      await fetchOrders();
       alert('Order placed successfully! 🎉');
     } catch (err) {
-      console.error('Order placement failed:', err);
-      alert('Failed to place order. Please try again.');
+      console.error('Order placement failed, storing demo order instead:', err);
+
+      const demoOrder = {
+        id: Date.now(),
+        ...payload,
+        status: 'ORDER_PLACED',
+        created_at: new Date().toISOString()
+      };
+      const storedOrders = localStorage.getItem(DEMO_ORDERS_STORAGE_KEY);
+      const existingOrders = storedOrders ? JSON.parse(storedOrders) : [];
+      localStorage.setItem(DEMO_ORDERS_STORAGE_KEY, JSON.stringify([demoOrder, ...existingOrders]));
+      setOrders(prev => [demoOrder, ...prev]);
+      setCart([]);
+      setDeliveryAddress('');
+      setShowCart(false);
+      setSelectedOrder(demoOrder);
+      setOrderTimeline([{ event_type: 'order.placed', created_at: demoOrder.created_at }]);
+      setView('orders');
+      alert('Order saved in demo mode. Backend is unavailable, but your order flow is now testable.');
+    } finally {
+      setIsPlacingOrder(false);
     }
   };
 
@@ -435,9 +494,9 @@ const CustomerDashboard = () => {
                    <button 
                      onClick={placeOrder}
                      className="w-full premium-gradient py-5 rounded-2xl font-black text-center shadow-2xl shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                     disabled={!deliveryAddress.trim()}
+                     disabled={!deliveryAddress.trim() || isPlacingOrder}
                    >
-                     Place Order Now
+                     {isPlacingOrder ? 'Placing Order...' : 'Place Order Now'}
                    </button>
                  </div>
                )}
@@ -522,7 +581,7 @@ const OrderDetails = ({ order, timeline }) => (
         <div>
           <h4 className="font-bold mb-4 text-white/60 uppercase tracking-widest text-sm">Items Ordered</h4>
           <div className="space-y-3">
-            {JSON.parse(order.items || '[]').map((item, i) => (
+            {normalizeOrderItems(order.items).map((item, i) => (
               <div key={i} className="flex justify-between items-center bg-white/5 p-4 rounded-xl">
                 <span className="font-bold">{item.name}</span>
                 <span className="text-emerald-400 font-bold">₹{item.price}</span>

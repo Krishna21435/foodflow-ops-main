@@ -2,8 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { Pool } = require('pg');
+const Database = require('better-sqlite3');
 const dotenv = require('dotenv');
+const path = require('path');
 
 dotenv.config();
 
@@ -14,42 +15,44 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 app.use(cors());
 app.use(express.json());
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+// Initialize SQLite DB
+const db = new Database(path.join(__dirname, 'auth.db'));
 
-// Initialize DB
 const initDB = async () => {
   try {
-    await pool.query(`
+    db.exec(`
       CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'customer',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
     // Seed users
-    const userCount = await pool.query('SELECT COUNT(*) FROM users');
-    if (parseInt(userCount.rows[0].count) === 0) {
+    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
+    if (userCount.count === 0) {
       const hashedPassword = await bcrypt.hash('123456', 10);
-      await pool.query(`
+      const insert = db.prepare(`
         INSERT INTO users (name, email, password, role) VALUES 
-        ($1, $2, $3, $4),
-        ($5, $6, $3, $7),
-        ($8, $9, $3, $10),
-        ($11, $12, $3, $13);
-      `, ['Customer User', 'cust@foodflow.com', hashedPassword, 'customer',
-          'Rest Staff', 'rest@foodflow.com', 'restaurant',
-          'Rider Nick', 'rider@foodflow.com', 'delivery',
-          'Ops Admin', 'admin@foodflow.com', 'admin']);
+        (?, ?, ?, ?),
+        (?, ?, ?, ?),
+        (?, ?, ?, ?),
+        (?, ?, ?, ?)
+      `);
+      
+      insert.run(
+          'Customer User', 'cust@foodflow.com', hashedPassword, 'customer',
+          'Rest Staff', 'rest@foodflow.com', hashedPassword, 'restaurant',
+          'Rider Nick', 'rider@foodflow.com', hashedPassword, 'delivery',
+          'Ops Admin', 'admin@foodflow.com', hashedPassword, 'admin'
+      );
       console.log('Seed users created (pass: 123456)');
     }
     
-    console.log('Auth DB initialized');
+    console.log('Auth DB initialized (SQLite)');
   } catch (err) {
     console.error('Failed to initialize Auth DB', err);
   }
@@ -61,24 +64,27 @@ app.post('/register', async (req, res) => {
   const { name, email, password, role } = req.body;
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-      'INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role',
-      [name, email, hashedPassword, role || 'customer']
-    );
-    res.status(201).json(result.rows[0]);
+    const stmt = db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)');
+    const info = stmt.run(name, email, hashedPassword, role || 'customer');
+    
+    const user = db.prepare('SELECT id, name, email, role FROM users WHERE id = ?').get(info.lastInsertRowid);
+    res.status(201).json(user);
   } catch (err) {
-    res.status(400).json({ error: 'Registration failed', detail: err.message });
+    if (err.message.includes('UNIQUE constraint failed')) {
+      res.status(400).json({ error: 'Registration failed', detail: 'Email already exists' });
+    } else {
+      res.status(400).json({ error: 'Registration failed', detail: err.message });
+    }
   }
 });
 
 app.post('/login', async (req, res) => {
   const { email, password } = req.body;
   try {
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    if (result.rows.length === 0) {
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    const user = result.rows[0];
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -95,8 +101,9 @@ app.get('/me', async (req, res) => {
   if (!token) return res.status(401).json({ error: 'No token' });
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const result = await pool.query('SELECT id, name, email, role FROM users WHERE id = $1', [decoded.id]);
-    res.json(result.rows[0]);
+    const user = db.prepare('SELECT id, name, email, role FROM users WHERE id = ?').get(decoded.id);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    res.json(user);
   } catch (err) {
     res.status(401).json({ error: 'Invalid token' });
   }
