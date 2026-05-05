@@ -494,7 +494,7 @@ const CustomerDashboard = () => {
                    <button 
                      onClick={placeOrder}
                      className="w-full premium-gradient py-5 rounded-2xl font-black text-center shadow-2xl shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                     disabled={!deliveryAddress.trim() || isPlacingOrder}
+                     disabled={isPlacingOrder}
                    >
                      {isPlacingOrder ? 'Placing Order...' : 'Place Order Now'}
                    </button>
