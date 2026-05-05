@@ -108,7 +108,7 @@ const OpsDashboard = () => {
            <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
               <Shield size={24} className="text-white" />
            </div>
-           <h1 className="text-xl font-black tracking-tight hidden md:block uppercase italic">Ops<span className="text-blue-500">Center</span></h1>
+           <h1 className="text-xl font-black tracking-tight hidden md:block uppercase italic">FOOD<span className="text-blue-500">FLOW</span></h1>
         </div>
 
         <div className="flex-1 space-y-2">

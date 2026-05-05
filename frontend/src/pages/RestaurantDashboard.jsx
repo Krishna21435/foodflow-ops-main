@@ -71,7 +71,7 @@ const RestaurantDashboard = () => {
            <div className="w-10 h-10 rounded-2xl bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
               <ChefHat size={24} className="text-white" />
            </div>
-           <h1 className="text-xl font-black tracking-tight hidden md:block">KITCHEN<span className="text-emerald-500">PRO</span></h1>
+           <h1 className="text-xl font-black tracking-tight hidden md:block italic uppercase">FOOD<span className="text-emerald-500">FLOW</span></h1>
         </div>
 
         <div className="flex-1 space-y-2">

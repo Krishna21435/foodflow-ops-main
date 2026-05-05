@@ -73,7 +73,7 @@ const DeliveryDashboard = () => {
            <div className="w-10 h-10 rounded-2xl premium-gradient flex items-center justify-center shadow-lg shadow-emerald-500/20">
               <Truck size={24} className="text-white" />
            </div>
-           <h1 className="text-xl font-black tracking-tight hidden md:block uppercase italic">Rider<span className="text-emerald-500">Flow</span></h1>
+           <h1 className="text-xl font-black tracking-tight hidden md:block uppercase italic">FOOD<span className="text-emerald-500">FLOW</span></h1>
         </div>
 
         <div className="flex-1 space-y-2">
